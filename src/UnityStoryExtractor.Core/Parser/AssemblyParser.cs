@@ -94,37 +94,35 @@ public partial class AssemblyParser : IAssetParser
             var metadataReader = peReader.GetMetadataReader();
             var strings = new HashSet<string>();
 
-            // User Stringsヒープから抽出
-            var userStringHandle = MetadataTokens.UserStringHandle(1);
-            while (!userStringHandle.IsNil)
+            // User Stringsヒープから抽出（簡易版）
+            int heapSize = metadataReader.GetHeapSize(HeapIndex.UserString);
+            int offset = 1; // オフセット0はnullなので1から開始
+
+            while (offset < heapSize)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 try
                 {
-                    var str = metadataReader.GetUserString(userStringHandle);
-                    if (IsValidStoryString(str, options))
+                    var handle = MetadataTokens.UserStringHandle(offset);
+                    if (handle.IsNil) break;
+
+                    var str = metadataReader.GetUserString(handle);
+                    
+                    if (!string.IsNullOrEmpty(str) && IsValidStoryString(str, options))
                     {
                         strings.Add(str);
                     }
 
-                    // 次のハンドルを取得
-                    int offset = metadataReader.GetHeapOffset(userStringHandle);
-                    int length = metadataReader.GetBlobReader(userStringHandle).Length;
-                    int nextOffset = offset + length + 1;
-                    
-                    if (nextOffset < metadataReader.GetHeapSize(HeapIndex.UserString))
-                    {
-                        userStringHandle = MetadataTokens.UserStringHandle(nextOffset);
-                    }
-                    else
-                    {
-                        break;
-                    }
+                    // 次のオフセットへ（文字列長 + ヘッダー + ターミネータ）
+                    // User String は UTF-16 なので 2倍 + 1（長さバイト） + 1（ターミネータ）
+                    int strByteLength = str.Length * 2 + 1;
+                    int lengthBytes = strByteLength < 0x80 ? 1 : (strByteLength < 0x4000 ? 2 : 4);
+                    offset += lengthBytes + strByteLength;
                 }
                 catch
                 {
-                    break;
+                    offset++; // エラー時は次のバイトへ
                 }
             }
 
