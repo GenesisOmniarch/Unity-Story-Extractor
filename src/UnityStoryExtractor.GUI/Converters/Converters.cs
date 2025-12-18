@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
-using MaterialDesignThemes.Wpf;
 using UnityStoryExtractor.Core.Models;
 
 namespace UnityStoryExtractor.GUI.Converters;
@@ -28,7 +27,7 @@ public class BoolToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
-/// ファイルノードタイプをアイコンに変換するコンバーター
+/// ファイルノードタイプをアイコン絵文字に変換するコンバーター
 /// </summary>
 public class FileNodeTypeToIconConverter : IValueConverter
 {
@@ -38,18 +37,18 @@ public class FileNodeTypeToIconConverter : IValueConverter
         {
             return nodeType switch
             {
-                FileNodeType.Directory => PackIconKind.Folder,
-                FileNodeType.AssetsFile => PackIconKind.FileDocument,
-                FileNodeType.AssetBundle => PackIconKind.PackageVariant,
-                FileNodeType.ResourcesAssets => PackIconKind.Database,
-                FileNodeType.ResSFile => PackIconKind.FileImage,
-                FileNodeType.Assembly => PackIconKind.CodeBraces,
-                FileNodeType.GlobalGameManagers => PackIconKind.Cog,
-                _ => PackIconKind.File
+                FileNodeType.Directory => "📁",
+                FileNodeType.AssetsFile => "📄",
+                FileNodeType.AssetBundle => "📦",
+                FileNodeType.ResourcesAssets => "🗃️",
+                FileNodeType.ResSFile => "🖼️",
+                FileNodeType.Assembly => "⚙️",
+                FileNodeType.GlobalGameManagers => "🔧",
+                _ => "📄"
             };
         }
 
-        return PackIconKind.File;
+        return "📄";
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

@@ -23,10 +23,6 @@
   <ItemGroup>
     <!-- MVVM Framework -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    
-    <!-- Modern WPF UI -->
-    <PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
-    <PackageReference Include="MaterialDesignColors" Version="3.1.0" />
   </ItemGroup>
 
   <!-- Resources are automatically included by the SDK -->
