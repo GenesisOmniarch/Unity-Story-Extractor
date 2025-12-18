@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter</value>
+  </resheader>
+  
+  <!-- Common -->
+  <data name="AppName" xml:space="preserve">
+    <value>Unity Story Extractor</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>準備完了</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>読み込み中...</value>
+  </data>
+  <data name="Extracting" xml:space="preserve">
+    <value>抽出中...</value>
+  </data>
+  <data name="Completed" xml:space="preserve">
+    <value>完了</value>
+  </data>
+  <data name="Cancelled" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>エラー</value>
+  </data>
+  
+  <!-- Menu -->
+  <data name="OpenFolder" xml:space="preserve">
+    <value>フォルダを開く</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>設定</value>
+  </data>
+  <data name="Extract" xml:space="preserve">
+    <value>抽出開始</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  
+  <!-- Tabs -->
+  <data name="Preview" xml:space="preserve">
+    <value>プレビュー</value>
+  </data>
+  <data name="Details" xml:space="preserve">
+    <value>詳細</value>
+  </data>
+  <data name="Log" xml:space="preserve">
+    <value>ログ</value>
+  </data>
+  
+  <!-- Filters -->
+  <data name="Search" xml:space="preserve">
+    <value>検索...</value>
+  </data>
+  <data name="Filter" xml:space="preserve">
+    <value>フィルター...</value>
+  </data>
+  <data name="All" xml:space="preserve">
+    <value>すべて</value>
+  </data>
+  
+  <!-- Copyright -->
+  <data name="CopyrightWarning" xml:space="preserve">
+    <value>このツールは教育・研究目的で設計されています。ゲームデータの抽出は、著作権法で保護されているコンテンツに対して行う場合、法的問題が発生する可能性があります。使用者は、自身の行為に対する法的責任を負います。</value>
+  </data>
+  
+  <!-- Statistics -->
+  <data name="TextAsset" xml:space="preserve">
+    <value>テキストアセット</value>
+  </data>
+  <data name="MonoBehaviour" xml:space="preserve">
+    <value>MonoBehaviour</value>
+  </data>
+  <data name="Assembly" xml:space="preserve">
+    <value>アセンブリ</value>
+  </data>
+  <data name="Binary" xml:space="preserve">
+    <value>バイナリ</value>
+  </data>
+  <data name="TotalBytes" xml:space="preserve">
+    <value>合計バイト数</value>
+  </data>
+  
+  <!-- Messages -->
+  <data name="DragDropHint" xml:space="preserve">
+    <value>フォルダをドラッグ＆ドロップまたは「フォルダを開く」をクリックしてください</value>
+  </data>
+  <data name="UnityVersion" xml:space="preserve">
+    <value>Unityバージョン</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>不明</value>
+  </data>
+  <data name="ProcessedFiles" xml:space="preserve">
+    <value>処理ファイル数</value>
+  </data>
+  <data name="ExtractedItems" xml:space="preserve">
+    <value>抽出アイテム数</value>
+  </data>
+  <data name="ProcessingTime" xml:space="preserve">
+    <value>処理時間</value>
+  </data>
+</root>
