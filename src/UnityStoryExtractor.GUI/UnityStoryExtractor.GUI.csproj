@@ -28,19 +28,6 @@
     <PackageReference Include="MaterialDesignColors" Version="3.1.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Resource Include="Resources\*.resx" />
-    <Resource Include="Resources\*.ico" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="Resources\Strings.ja.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-    </None>
-    <None Update="Resources\Strings.resx">
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Strings.Designer.cs</LastGenOutput>
-    </None>
-  </ItemGroup>
+  <!-- Resources are automatically included by the SDK -->
 
 </Project>
