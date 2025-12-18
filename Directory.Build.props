@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625</NoWarn>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <Authors>Unity Story Extractor Contributors</Authors>
+    <Company>Unity Story Extractor</Company>
+    <Product>Unity Story Extractor</Product>
+    <Copyright>Copyright © 2024 Unity Story Extractor Contributors</Copyright>
+    <RepositoryUrl>https://github.com/yourusername/UnityStoryExtractor</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+</Project>
