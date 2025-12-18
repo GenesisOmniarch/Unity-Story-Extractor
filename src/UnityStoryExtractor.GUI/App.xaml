@@ -1,21 +1,19 @@
 <Application x:Class="UnityStoryExtractor.GUI.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              StartupUri="Views/MainWindow.xaml"
              Startup="Application_Startup">
     <Application.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <!-- Material Design -->
-                <materialDesign:BundledTheme BaseTheme="Light" PrimaryColor="DeepPurple" SecondaryColor="Lime" />
-                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Defaults.xaml" />
-            </ResourceDictionary.MergedDictionaries>
-            
             <!-- カスタムスタイル -->
             <Style x:Key="JapaneseFont" TargetType="Control">
                 <Setter Property="FontFamily" Value="Yu Gothic UI, MS Gothic, Meiryo, Segoe UI"/>
             </Style>
+            
+            <!-- プライマリカラー -->
+            <SolidColorBrush x:Key="PrimaryBrush" Color="#673AB7"/>
+            <SolidColorBrush x:Key="PrimaryLightBrush" Color="#9575CD"/>
+            <SolidColorBrush x:Key="AccentBrush" Color="#7C4DFF"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
