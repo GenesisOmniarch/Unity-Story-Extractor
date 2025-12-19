@@ -8,7 +8,7 @@ using UnityStoryExtractor.Core.Parser;
 namespace UnityStoryExtractor.Core.Extractor;
 
 /// <summary>
-/// ストーリー抽出器の実装 - 抜本的に改善
+/// ストーリー抽出器 - フリーズ問題修正版
 /// </summary>
 public class StoryExtractor : IStoryExtractor
 {
@@ -16,10 +16,10 @@ public class StoryExtractor : IStoryExtractor
     private readonly List<IAssetParser> _parsers;
     private readonly DecryptorManager _decryptorManager;
 
-    // 設定
-    private const int MaxFileSizeForFullParse = 200 * 1024 * 1024; // 200MB
-    private const int StreamingChunkSize = 8 * 1024 * 1024; // 8MB chunks
-    private const int MaxConcurrentFiles = 4;
+    // 問題1修正: 並列度を下げる
+    private const int MaxFileSizeForFullParse = 100 * 1024 * 1024; // 100MB
+    private const int StreamingChunkSize = 4 * 1024 * 1024; // 4MB chunks
+    private const int MaxConcurrentFiles = 2; // 並列度を2に制限
 
     public StoryExtractor()
     {
@@ -60,18 +60,7 @@ public class StoryExtractor : IStoryExtractor
             result.UnityVersion = await _loader.DetectUnityVersionAsync(directoryPath, cancellationToken) ?? "Unknown";
 
             // ディレクトリをスキャン
-            var scanProgress = new Progress<ScanProgress>(p =>
-            {
-                progress?.Report(new ExtractionProgress
-                {
-                    CurrentOperation = "スキャン中...",
-                    CurrentFile = p.CurrentFile,
-                    TotalFiles = p.TotalFiles,
-                    ProcessedFiles = p.ProcessedFiles
-                });
-            });
-
-            var rootNode = await _loader.ScanDirectoryAsync(directoryPath, scanProgress, cancellationToken);
+            var rootNode = await _loader.ScanDirectoryAsync(directoryPath, null, cancellationToken);
 
             // ファイルを収集
             var files = CollectFiles(rootNode).ToList();
@@ -82,14 +71,19 @@ public class StoryExtractor : IStoryExtractor
             var extractedTexts = new ConcurrentBag<ExtractedText>();
             var errors = new ConcurrentBag<ExtractionError>();
 
-            // 並列処理の設定
+            // 問題1修正: 並列度を最大2に制限
+            int parallelism = options.UseParallelProcessing 
+                ? Math.Min(options.MaxDegreeOfParallelism, MaxConcurrentFiles) 
+                : 1;
+
             var parallelOptions = new ParallelOptions
             {
-                MaxDegreeOfParallelism = options.UseParallelProcessing 
-                    ? Math.Min(options.MaxDegreeOfParallelism, MaxConcurrentFiles) 
-                    : 1,
+                MaxDegreeOfParallelism = parallelism,
                 CancellationToken = cancellationToken
             };
+
+            // 問題4修正: ログ頻度を下げる
+            int lastReportedProgress = 0;
 
             // ファイルごとに処理
             await Parallel.ForEachAsync(files, parallelOptions, async (file, ct) =>
@@ -105,20 +99,26 @@ public class StoryExtractor : IStoryExtractor
                     }
 
                     var currentProcessed = Interlocked.Increment(ref processedFiles);
-                    progress?.Report(new ExtractionProgress
+                    
+                    // 問題4修正: 10ファイルごと、または完了時のみ進捗報告
+                    if (currentProcessed - lastReportedProgress >= 10 || currentProcessed == totalFiles)
                     {
-                        TotalFiles = totalFiles,
-                        ProcessedFiles = currentProcessed,
-                        CurrentFile = file.FullPath,
-                        CurrentOperation = "抽出中...",
-                        ExtractedCount = extractedTexts.Count
-                    });
+                        Interlocked.Exchange(ref lastReportedProgress, currentProcessed);
+                        progress?.Report(new ExtractionProgress
+                        {
+                            TotalFiles = totalFiles,
+                            ProcessedFiles = currentProcessed,
+                            CurrentFile = file.FullPath,
+                            CurrentOperation = "抽出中",
+                            ExtractedCount = extractedTexts.Count
+                        });
+                    }
                 }
                 catch (OperationCanceledException)
                 {
                     throw;
                 }
-                catch (OutOfMemoryException ex)
+                catch (OutOfMemoryException)
                 {
                     // メモリ不足時はGC実行してスキップ
                     GC.Collect(2, GCCollectionMode.Forced);
@@ -127,7 +127,7 @@ public class StoryExtractor : IStoryExtractor
                     errors.Add(new ExtractionError
                     {
                         File = file.FullPath,
-                        Message = $"メモリ不足: {ex.Message}",
+                        Message = "メモリ不足",
                         Timestamp = DateTime.UtcNow
                     });
                 }
@@ -136,7 +136,7 @@ public class StoryExtractor : IStoryExtractor
                     errors.Add(new ExtractionError
                     {
                         File = file.FullPath,
-                        Message = $"{ex.GetType().Name}: {ex.Message}",
+                        Message = ex.Message,
                         Timestamp = DateTime.UtcNow
                     });
                 }
@@ -164,8 +164,6 @@ public class StoryExtractor : IStoryExtractor
         stopwatch.Stop();
         result.EndTime = DateTime.UtcNow;
         result.TotalExtracted = result.ExtractedTexts.Count;
-
-        // 統計を更新
         UpdateStatistics(result);
 
         return result;
@@ -203,7 +201,7 @@ public class StoryExtractor : IStoryExtractor
             result.Errors.Add(new ExtractionError
             {
                 File = filePath,
-                Message = $"ファイル抽出エラー: {ex.Message}",
+                Message = ex.Message,
                 Exception = ex.ToString()
             });
         }
@@ -253,14 +251,19 @@ public class StoryExtractor : IStoryExtractor
                     }
 
                     processedFiles++;
-                    progress?.Report(new ExtractionProgress
+                    
+                    // 進捗報告を間引く
+                    if (processedFiles % 10 == 0 || processedFiles == totalFiles)
                     {
-                        TotalFiles = totalFiles,
-                        ProcessedFiles = processedFiles,
-                        CurrentFile = file.FullPath,
-                        CurrentOperation = "抽出中...",
-                        ExtractedCount = result.ExtractedTexts.Count
-                    });
+                        progress?.Report(new ExtractionProgress
+                        {
+                            TotalFiles = totalFiles,
+                            ProcessedFiles = processedFiles,
+                            CurrentFile = file.FullPath,
+                            CurrentOperation = "抽出中",
+                            ExtractedCount = result.ExtractedTexts.Count
+                        });
+                    }
                 }
 
                 result.ProcessedFiles = processedFiles;
@@ -283,7 +286,7 @@ public class StoryExtractor : IStoryExtractor
             result.Errors.Add(new ExtractionError
             {
                 File = node.FullPath,
-                Message = $"ノード抽出エラー: {ex.Message}",
+                Message = ex.Message,
                 Exception = ex.ToString()
             });
         }
@@ -295,7 +298,7 @@ public class StoryExtractor : IStoryExtractor
     }
 
     /// <summary>
-    /// 単一ファイルから抽出 - ロバストな実装
+    /// 単一ファイルから抽出 - タイムアウト付き
     /// </summary>
     private async Task<List<ExtractedText>> ExtractFromSingleFileAsync(
         FileTreeNode node,
@@ -304,61 +307,52 @@ public class StoryExtractor : IStoryExtractor
     {
         var texts = new List<ExtractedText>();
 
-        // ファイル存在チェック
         if (!File.Exists(node.FullPath))
-        {
             return texts;
-        }
 
         var fileInfo = new FileInfo(node.FullPath);
 
-        // 空ファイルはスキップ
         if (fileInfo.Length == 0)
-        {
             return texts;
-        }
 
-        // 除外パターンチェック
         if (IsExcludedFile(node.FullPath, options))
-        {
             return texts;
-        }
 
-        // パーサーを取得
-        var parser = _parsers.FirstOrDefault(p => p.SupportedTypes.Contains(node.NodeType));
-        
-        ParseResult? parseResult = null;
+        // ファイルごとのタイムアウト（30秒）
+        using var fileCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        fileCts.CancelAfter(TimeSpan.FromSeconds(30));
 
         try
         {
+            var parser = _parsers.FirstOrDefault(p => p.SupportedTypes.Contains(node.NodeType));
+            ParseResult? parseResult = null;
+
             if (parser != null)
             {
-                // 大きなファイルはストリーミング処理
                 if (fileInfo.Length > MaxFileSizeForFullParse)
                 {
-                    parseResult = await ParseLargeFileAsync(node.FullPath, parser, options, cancellationToken);
+                    parseResult = await ParseLargeFileAsync(node.FullPath, parser, options, fileCts.Token);
                 }
                 else
                 {
-                    parseResult = await parser.ParseAsync(node.FullPath, options, cancellationToken);
+                    parseResult = await parser.ParseAsync(node.FullPath, options, fileCts.Token);
                 }
             }
             else
             {
-                // パーサーがない場合はフォールバック解析
-                parseResult = await FallbackParseAsync(node.FullPath, options, cancellationToken);
+                // 問題5対応: パーサーがない場合もフォールバック解析
+                parseResult = await FallbackParseAsync(node.FullPath, options, fileCts.Token);
             }
 
             if (parseResult != null && parseResult.Success)
             {
                 foreach (var asset in parseResult.Assets)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    fileCts.Token.ThrowIfCancellationRequested();
 
-                    // 暗号化チェック
                     if (asset.IsEncrypted && options.AttemptDecryption && asset.RawData != null)
                     {
-                        var decrypted = await TryDecryptAssetAsync(asset, node.FullPath, parser, options, cancellationToken);
+                        var decrypted = await TryDecryptAssetAsync(asset, node.FullPath, parser, options, fileCts.Token);
                         if (decrypted.Any())
                         {
                             texts.AddRange(decrypted);
@@ -366,25 +360,20 @@ public class StoryExtractor : IStoryExtractor
                         }
                     }
 
-                    // 通常の抽出
                     var source = DetermineExtractionSource(node.NodeType, asset.TypeName);
                     AddExtractedTexts(asset, node.FullPath, source, texts, options);
                 }
             }
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // ファイルタイムアウト - スキップ
+        }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch (IOException)
-        {
-            // ファイルアクセスエラーは無視（ロックされているなど）
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // アクセス権限エラーは無視
-        }
-        catch (Exception)
+        catch
         {
             // その他のエラーもスキップして続行
         }
@@ -399,7 +388,7 @@ public class StoryExtractor : IStoryExtractor
             }
             catch
             {
-                // .resS処理エラーはスキップ
+                // エラーはスキップ
             }
         }
 
@@ -407,7 +396,7 @@ public class StoryExtractor : IStoryExtractor
     }
 
     /// <summary>
-    /// 大きなファイルをストリーミング処理
+    /// 大きなファイルをストリーミング処理（メモリ制限付き）
     /// </summary>
     private async Task<ParseResult> ParseLargeFileAsync(
         string filePath,
@@ -423,12 +412,27 @@ public class StoryExtractor : IStoryExtractor
                 FileShare.Read, bufferSize: StreamingChunkSize, useAsync: true);
 
             var buffer = new byte[StreamingChunkSize];
-            long position = 0;
             int chunkIndex = 0;
+            int maxChunks = 10; // 最大10チャンク（40MB）
 
-            while (position < stream.Length)
+            while (stream.Position < stream.Length && chunkIndex < maxChunks)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                int bytesToRead = (int)Math.Min(StreamingChunkSize, stream.Length - stream.Position);
+                int bytesRead = await stream.ReadAsync(buffer.AsMemory(0, bytesToRead), cancellationToken);
+
+                if (bytesRead == 0) break;
+
+                var chunkResult = await parser.ParseBinaryAsync(
+                    buffer[..bytesRead], 
+                    $"{filePath}#chunk{chunkIndex}", 
+                    options, 
+                    cancellationToken);
+
+                result.Assets.AddRange(chunkResult.Assets.Take(500)); // チャンクあたり最大500
+
+                chunkIndex++;
 
                 // メモリチェック
                 var memoryMB = GC.GetTotalMemory(false) / (1024.0 * 1024.0);
@@ -437,28 +441,7 @@ public class StoryExtractor : IStoryExtractor
                     GC.Collect(1, GCCollectionMode.Optimized);
                 }
 
-                int bytesToRead = (int)Math.Min(StreamingChunkSize, stream.Length - position);
-                int bytesRead = await stream.ReadAsync(buffer.AsMemory(0, bytesToRead), cancellationToken);
-
-                if (bytesRead == 0) break;
-
-                // チャンクを解析
-                var chunkResult = await parser.ParseBinaryAsync(
-                    buffer[..bytesRead], 
-                    $"{filePath}#chunk{chunkIndex}", 
-                    options, 
-                    cancellationToken);
-
-                result.Assets.AddRange(chunkResult.Assets);
-
-                position += bytesRead;
-                chunkIndex++;
-
-                // 最大アセット数制限
-                if (result.Assets.Count > 10000)
-                {
-                    break;
-                }
+                if (result.Assets.Count > 2000) break;
             }
         }
         catch (Exception ex)
@@ -471,7 +454,7 @@ public class StoryExtractor : IStoryExtractor
     }
 
     /// <summary>
-    /// フォールバック解析（文字列検索）
+    /// フォールバック解析（問題5対応）
     /// </summary>
     private async Task<ParseResult> FallbackParseAsync(
         string filePath,

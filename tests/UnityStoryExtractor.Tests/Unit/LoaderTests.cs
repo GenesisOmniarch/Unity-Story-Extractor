@@ -67,8 +67,8 @@ public class LoaderTests
             using var cts = new CancellationTokenSource();
             cts.Cancel();
 
-            // Act & Assert
-            await Assert.ThrowsAsync<OperationCanceledException>(
+            // Act & Assert (TaskCanceledException is a subclass of OperationCanceledException)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
                 () => _loader.ScanDirectoryAsync(tempDir, cancellationToken: cts.Token));
         }
         finally

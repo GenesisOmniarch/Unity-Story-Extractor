@@ -214,6 +214,8 @@ public class XmlOutputWriter : IOutputWriter
             )
         );
 
-        return Task.FromResult(doc.ToString());
+        // XML宣言を含めて出力
+        var xml = doc.Declaration?.ToString() + Environment.NewLine + doc.ToString();
+        return Task.FromResult(xml);
     }
 }
