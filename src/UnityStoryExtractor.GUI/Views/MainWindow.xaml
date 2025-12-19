@@ -7,13 +7,13 @@
         xmlns:conv="clr-namespace:UnityStoryExtractor.GUI.Converters"
         mc:Ignorable="d"
         Title="Unity Story Extractor" 
-        Height="700" Width="1000"
-        MinHeight="500" MinWidth="700"
+        Height="800" Width="1200"
+        MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         AllowDrop="True"
         Drop="Window_Drop"
         DragOver="Window_DragOver"
-        FontFamily="Yu Gothic UI, Meiryo, Segoe UI"
+        FontFamily="Yu Gothic UI, Meiryo, MS Gothic, Segoe UI"
         Background="#FAFAFA">
     
     <Window.DataContext>
@@ -24,7 +24,7 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
         <conv:FileSizeConverter x:Key="FileSizeConverter"/>
         
-        <!-- シンプルなスタイル -->
+        <!-- スタイル定義 -->
         <Style x:Key="HeaderStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="20"/>
             <Setter Property="FontWeight" Value="Bold"/>
@@ -37,6 +37,51 @@
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="4" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.9"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <Style x:Key="SmallButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Background" Value="#E0E0E0"/>
+            <Setter Property="Foreground" Value="#333"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="3" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <Style x:Key="SectionHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#673AB7"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
         </Style>
     </Window.Resources>
     
@@ -48,19 +93,27 @@
         </Grid.RowDefinitions>
         
         <!-- ヘッダー -->
-        <Border Grid.Row="0" Background="#673AB7" Padding="16">
+        <Border Grid.Row="0" Background="#673AB7" Padding="16,12">
             <DockPanel>
-                <TextBlock Text="Unity Story Extractor" 
-                           FontSize="20" 
-                           FontWeight="Bold"
-                           Foreground="White"
-                           VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="📖" FontSize="24" Margin="0,0,8,0"/>
+                    <TextBlock Text="Unity Story Extractor" 
+                               FontSize="18" 
+                               FontWeight="Bold"
+                               Foreground="White"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
                 
                 <StackPanel Orientation="Horizontal" 
                             DockPanel.Dock="Right" 
                             HorizontalAlignment="Right">
                     <Button Content="📁 フォルダを開く" 
                             Command="{Binding OpenFolderCommand}"
+                            Style="{StaticResource ButtonStyle}"
+                            Background="#7E57C2"
+                            Margin="0,0,8,0"/>
+                    <Button Content="📂 出力フォルダ" 
+                            Command="{Binding OpenOutputFolderCommand}"
                             Style="{StaticResource ButtonStyle}"
                             Background="#7E57C2"
                             Margin="0,0,8,0"/>
@@ -85,11 +138,17 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     
+                    <!-- ヘッダー -->
+                    <Border Grid.Row="0" Background="#F5F5F5" Padding="8" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
+                        <TextBlock Text="📁 ファイル構造" Style="{StaticResource SectionHeaderStyle}"/>
+                    </Border>
+                    
                     <!-- 検索ボックス -->
-                    <TextBox Grid.Row="0" 
+                    <TextBox Grid.Row="1" 
                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                              Margin="8"
                              Padding="8"
@@ -114,10 +173,13 @@
                     </TextBox>
                     
                     <!-- ファイルツリー -->
-                    <TreeView Grid.Row="1" 
+                    <TreeView Grid.Row="2" 
+                              x:Name="FileTreeView"
                               ItemsSource="{Binding FileTreeNodes}"
                               BorderThickness="0"
-                              Margin="4">
+                              Margin="4"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling">
                         <TreeView.ItemContainerStyle>
                             <Style TargetType="TreeViewItem">
                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
@@ -127,11 +189,13 @@
                         </TreeView.ItemContainerStyle>
                         <TreeView.ItemTemplate>
                             <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                                <StackPanel Orientation="Horizontal" Margin="2">
+                                <StackPanel Orientation="Horizontal" Margin="2" ToolTip="{Binding FullPath}">
+                                    <TextBlock Text="{Binding Icon}" Margin="0,0,4,0"/>
                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
                                     <TextBlock Text="{Binding FileSize, Converter={StaticResource FileSizeConverter}}" 
                                                Foreground="Gray" 
                                                Margin="8,0,0,0"
+                                               FontSize="11"
                                                VerticalAlignment="Center"
                                                Visibility="{Binding IsDirectory, Converter={StaticResource BoolToVisibility}, ConverterParameter=Inverse}"/>
                                 </StackPanel>
@@ -140,7 +204,7 @@
                     </TreeView>
                     
                     <!-- 空状態 -->
-                    <StackPanel Grid.Row="1" 
+                    <StackPanel Grid.Row="2" 
                                 HorizontalAlignment="Center" 
                                 VerticalAlignment="Center"
                                 Visibility="{Binding HasNoFiles, Converter={StaticResource BoolToVisibility}}">
@@ -158,7 +222,7 @@
                           VerticalAlignment="Stretch"
                           Background="Transparent"/>
             
-            <!-- 右パネル: プレビューと操作 -->
+            <!-- 右パネル -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -188,6 +252,16 @@
                                     Style="{StaticResource ButtonStyle}"
                                     Background="#4CAF50"
                                     Margin="8,0,0,0"/>
+                            
+                            <!-- 出力パス表示 -->
+                            <TextBlock Text="{Binding OutputFolderPath, StringFormat='出力先: {0}'}" 
+                                       VerticalAlignment="Center" 
+                                       Foreground="Gray"
+                                       FontSize="11"
+                                       Margin="16,0,0,0"
+                                       MaxWidth="300"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding OutputFolderPath}"/>
                         </StackPanel>
                         
                         <!-- 進捗バー -->
@@ -206,8 +280,68 @@
                 
                 <!-- タブコントロール -->
                 <TabControl Grid.Row="1">
-                    <!-- プレビュータブ -->
-                    <TabItem Header="📋 プレビュー">
+                    <!-- アセットプレビュータブ（問題2: 新規追加） -->
+                    <TabItem Header="🔍 アセット内容">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="200"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            
+                            <!-- プレビューヘッダー -->
+                            <Border Grid.Row="0" Background="#F5F5F5" Padding="8" Margin="0,0,0,4">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding AssetPreviewTitle}" FontWeight="Bold"/>
+                                    <TextBlock Text=" (読み込み中...)" Foreground="Gray"
+                                               Visibility="{Binding IsLoadingPreview, Converter={StaticResource BoolToVisibility}}"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <!-- アセット内容リスト -->
+                            <DataGrid Grid.Row="1"
+                                      ItemsSource="{Binding AssetContents}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      SelectionMode="Single"
+                                      GridLinesVisibility="Horizontal"
+                                      BorderBrush="#E0E0E0"
+                                      Margin="0,0,0,4">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="名前" Binding="{Binding Name}" Width="150"/>
+                                    <DataGridTextColumn Header="タイプ" Binding="{Binding TypeName}" Width="100"/>
+                                    <DataGridTextColumn Header="サイズ" Binding="{Binding Size}" Width="80"/>
+                                    <DataGridTextColumn Header="プレビュー" Binding="{Binding Preview}" Width="*">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            
+                            <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="#E0E0E0"/>
+                            
+                            <!-- プレビューテキスト -->
+                            <TextBox Grid.Row="3"
+                                     Text="{Binding AssetPreviewContent, Mode=OneWay}"
+                                     IsReadOnly="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto"
+                                     AcceptsReturn="True"
+                                     Padding="8"
+                                     FontFamily="Consolas, MS Gothic"
+                                     BorderBrush="#E0E0E0"
+                                     Background="#FAFAFA"/>
+                        </Grid>
+                    </TabItem>
+                    
+                    <!-- 抽出結果タブ -->
+                    <TabItem Header="📋 抽出結果">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -226,6 +360,11 @@
                                           Width="120"
                                           Margin="8,0,0,0"
                                           Padding="8"/>
+                                
+                                <TextBlock Text="{Binding FilteredResults.Count, StringFormat='表示: {0} 件'}" 
+                                           VerticalAlignment="Center" 
+                                           Margin="16,0,0,0"
+                                           Foreground="Gray"/>
                             </StackPanel>
                             
                             <!-- 結果リスト -->
@@ -240,7 +379,7 @@
                                       BorderThickness="0">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="アセット名" Binding="{Binding AssetName}" Width="120"/>
-                                    <DataGridTextColumn Header="タイプ" Binding="{Binding AssetType}" Width="80"/>
+                                    <DataGridTextColumn Header="タイプ" Binding="{Binding AssetType}" Width="100"/>
                                     <DataGridTextColumn Header="ソース" Binding="{Binding Source}" Width="80"/>
                                     <DataGridTextColumn Header="内容" Binding="{Binding Content}" Width="*">
                                         <DataGridTextColumn.ElementStyle>
@@ -264,7 +403,8 @@
                             
                             <StackPanel Grid.Row="0">
                                 <TextBlock Text="{Binding SelectedResult.AssetName, StringFormat='アセット: {0}'}" FontWeight="Bold"/>
-                                <TextBlock Text="{Binding SelectedResult.SourceFile, StringFormat='ファイル: {0}'}" Foreground="Gray"/>
+                                <TextBlock Text="{Binding SelectedResult.SourceFile, StringFormat='ファイル: {0}'}" Foreground="Gray" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding SelectedResult.Source, StringFormat='ソース: {0}'}" Foreground="Gray"/>
                             </StackPanel>
                             
                             <TextBox Grid.Row="1" 
@@ -275,21 +415,56 @@
                                      AcceptsReturn="True"
                                      Margin="0,8,0,0"
                                      Padding="8"
+                                     FontFamily="Yu Gothic UI, MS Gothic"
                                      BorderBrush="#E0E0E0"/>
                         </Grid>
                     </TabItem>
                     
-                    <!-- ログタブ -->
+                    <!-- ログタブ（問題3: 強化） -->
                     <TabItem Header="📝 ログ">
-                        <TextBox Text="{Binding LogText, Mode=OneWay}"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 VerticalScrollBarVisibility="Auto"
-                                 AcceptsReturn="True"
-                                 Margin="8"
-                                 Padding="8"
-                                 FontFamily="Consolas, MS Gothic"
-                                 BorderBrush="#E0E0E0"/>
+                        <Grid Margin="4">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            
+                            <!-- ログツールバー -->
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,4,4,8">
+                                <Button Content="🗑️ クリア" 
+                                        Command="{Binding ClearLogsCommand}"
+                                        Style="{StaticResource SmallButtonStyle}"/>
+                                <Button Content="📂 ログファイルを開く" 
+                                        Command="{Binding OpenOutputFolderCommand}"
+                                        Style="{StaticResource SmallButtonStyle}"
+                                        Margin="8,0,0,0"/>
+                                <TextBlock Text="{Binding LogEntries.Count, StringFormat='ログ件数: {0}'}" 
+                                           VerticalAlignment="Center" 
+                                           Margin="16,0,0,0"
+                                           Foreground="Gray"/>
+                            </StackPanel>
+                            
+                            <!-- ログリスト -->
+                            <ListBox Grid.Row="1" 
+                                     ItemsSource="{Binding LogEntries}"
+                                     BorderBrush="#E0E0E0"
+                                     VirtualizingStackPanel.IsVirtualizing="True"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding LevelIcon}" Margin="0,0,8,0"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding FormattedTime}" Foreground="Gray" FontFamily="Consolas"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Message}" TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
                     </TabItem>
                 </TabControl>
                 
@@ -297,10 +472,10 @@
                 <Border Grid.Row="2" Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,8,0,0"
                         Visibility="{Binding HasResults, Converter={StaticResource BoolToVisibility}}">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Statistics.TextAssetCount, StringFormat='TextAsset: {0}'}" Margin="0,0,16,0"/>
-                        <TextBlock Text="{Binding Statistics.MonoBehaviourCount, StringFormat='MonoBehaviour: {0}'}" Margin="0,0,16,0"/>
-                        <TextBlock Text="{Binding Statistics.AssemblyStringCount, StringFormat='Assembly: {0}'}" Margin="0,0,16,0"/>
-                        <TextBlock Text="{Binding Statistics.TotalBytes, StringFormat='合計: {0} bytes'}"/>
+                        <TextBlock Text="{Binding Statistics.TextAssetCount, StringFormat='📄 TextAsset: {0}'}" Margin="0,0,16,0"/>
+                        <TextBlock Text="{Binding Statistics.MonoBehaviourCount, StringFormat='⚙️ MonoBehaviour: {0}'}" Margin="0,0,16,0"/>
+                        <TextBlock Text="{Binding Statistics.AssemblyStringCount, StringFormat='📦 Assembly: {0}'}" Margin="0,0,16,0"/>
+                        <TextBlock Text="{Binding Statistics.TotalBytes, Converter={StaticResource FileSizeConverter}}" Foreground="Gray"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -310,7 +485,10 @@
         <Border Grid.Row="2" Background="#F5F5F5" Padding="8,4">
             <DockPanel>
                 <TextBlock Text="{Binding StatusText}" DockPanel.Dock="Left"/>
-                <TextBlock Text="{Binding UnityVersion, StringFormat='Unity: {0}'}" DockPanel.Dock="Right" HorizontalAlignment="Right"/>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding MemoryUsage, StringFormat='メモリ: {0}'}" Foreground="Gray" Margin="0,0,16,0"/>
+                    <TextBlock Text="{Binding UnityVersion, StringFormat='Unity: {0}'}"/>
+                </StackPanel>
             </DockPanel>
         </Border>
     </Grid>

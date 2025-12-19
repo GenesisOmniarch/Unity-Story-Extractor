@@ -10,15 +10,24 @@ public class ExtractionOptions
     /// </summary>
     public bool ExtractTextAssets { get; set; } = true;
 
+    // 別名プロパティ（GUI互換用）
+    public bool ExtractTextAsset { get => ExtractTextAssets; set => ExtractTextAssets = value; }
+
     /// <summary>
     /// MonoBehaviourを抽出するかどうか
     /// </summary>
     public bool ExtractMonoBehaviours { get; set; } = true;
 
+    // 別名プロパティ（GUI互換用）
+    public bool ExtractMonoBehaviour { get => ExtractMonoBehaviours; set => ExtractMonoBehaviours = value; }
+
     /// <summary>
     /// アセンブリから文字列を抽出するかどうか
     /// </summary>
     public bool ExtractAssemblyStrings { get; set; } = true;
+
+    // 別名プロパティ（GUI互換用）
+    public bool ExtractAssembly { get => ExtractAssemblyStrings; set => ExtractAssemblyStrings = value; }
 
     /// <summary>
     /// バイナリデータからテキストを抽出するかどうか
