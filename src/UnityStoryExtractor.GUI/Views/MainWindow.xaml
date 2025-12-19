@@ -285,6 +285,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="200"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
@@ -299,8 +300,15 @@
                                 </StackPanel>
                             </Border>
                             
+                            <!-- ローディングインジケーター -->
+                            <ProgressBar Grid.Row="1" 
+                                         IsIndeterminate="True" 
+                                         Height="4"
+                                         Foreground="#673AB7"
+                                         Visibility="{Binding IsLoadingPreview, Converter={StaticResource BoolToVisibility}}"/>
+                            
                             <!-- アセット内容リスト -->
-                            <DataGrid Grid.Row="1"
+                            <DataGrid Grid.Row="2"
                                       ItemsSource="{Binding AssetContents}"
                                       AutoGenerateColumns="False"
                                       IsReadOnly="True"
@@ -323,10 +331,10 @@
                                 </DataGrid.Columns>
                             </DataGrid>
                             
-                            <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="#E0E0E0"/>
+                            <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch" Background="#E0E0E0"/>
                             
                             <!-- プレビューテキスト -->
-                            <TextBox Grid.Row="3"
+                            <TextBox Grid.Row="4"
                                      Text="{Binding AssetPreviewContent, Mode=OneWay}"
                                      IsReadOnly="True"
                                      TextWrapping="Wrap"

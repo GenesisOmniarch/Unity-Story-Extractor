@@ -11,16 +11,44 @@ namespace UnityStoryExtractor.GUI;
 /// </summary>
 public partial class App : Application
 {
-    private static readonly string LogFile = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+    /// <summary>
+    /// Outputフォルダーのパス
+    /// </summary>
+    public static readonly string OutputFolder = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory,
+        "Output");
+
+    /// <summary>
+    /// エラーログファイルのパス
+    /// </summary>
+    public static readonly string LogFile = Path.Combine(
+        OutputFolder,
         "UnityStoryExtractor_Error.log");
 
     public App()
     {
+        // Outputフォルダーを確実に作成
+        EnsureOutputFolderExists();
+
         // 最も早い段階でエラーハンドリングを設定
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+    }
+
+    private static void EnsureOutputFolderExists()
+    {
+        try
+        {
+            if (!Directory.Exists(OutputFolder))
+            {
+                Directory.CreateDirectory(OutputFolder);
+            }
+        }
+        catch
+        {
+            // フォルダー作成失敗は無視（後続処理で対応）
+        }
     }
 
     private void Application_Startup(object sender, StartupEventArgs e)
@@ -39,8 +67,10 @@ public partial class App : Application
     {
         try
         {
-            WriteLog("アプリケーション起動開始");
-            
+            WriteLog("=== アプリケーション起動開始 ===");
+            WriteLog($"ログファイル: {LogFile}");
+            WriteLog($"出力フォルダー: {OutputFolder}");
+
             // 日本語エンコーディングのサポートを登録
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
@@ -64,39 +94,56 @@ public partial class App : Application
     private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         var ex = e.ExceptionObject as Exception;
-        WriteLog($"UnhandledException: {ex}");
+        WriteLog($"[FATAL] UnhandledException: {ex}");
         ShowError(ex);
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        WriteLog($"DispatcherUnhandledException: {e.Exception}");
+        WriteLog($"[ERROR] DispatcherUnhandledException: {e.Exception}");
         ShowError(e.Exception);
         e.Handled = true;
     }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        WriteLog($"UnobservedTaskException: {e.Exception}");
+        WriteLog($"[WARN] UnobservedTaskException: {e.Exception}");
         e.SetObserved();
     }
 
     private static void ShowError(Exception? ex)
     {
-        var message = $"予期しないエラーが発生しました:\n\n{ex?.Message}\n\n詳細はデスクトップの\nUnityStoryExtractor_Error.log\nを確認してください。";
+        var message = $"予期しないエラーが発生しました:\n\n{ex?.Message}\n\n詳細は以下のログファイルを確認してください:\n{LogFile}";
         MessageBox.Show(message, "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
-    private static void WriteLog(string message)
+    /// <summary>
+    /// ログを書き込む（外部からも呼び出し可能）
+    /// </summary>
+    public static void WriteLog(string message)
     {
         try
         {
+            EnsureOutputFolderExists();
             var logMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n";
-            File.AppendAllText(LogFile, logMessage);
+            File.AppendAllText(LogFile, logMessage, Encoding.UTF8);
         }
         catch
         {
             // ログ書き込み失敗は無視
+        }
+    }
+
+    /// <summary>
+    /// エラーログを書き込む
+    /// </summary>
+    public static void WriteErrorLog(string context, Exception ex)
+    {
+        WriteLog($"[ERROR] {context}: {ex.GetType().Name} - {ex.Message}");
+        WriteLog($"  StackTrace: {ex.StackTrace}");
+        if (ex.InnerException != null)
+        {
+            WriteLog($"  InnerException: {ex.InnerException.Message}");
         }
     }
 }

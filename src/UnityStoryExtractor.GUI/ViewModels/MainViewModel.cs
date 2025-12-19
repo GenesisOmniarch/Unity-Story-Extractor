@@ -1,10 +1,11 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows;
-using System.Windows.Input;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -17,18 +18,18 @@ using UnityStoryExtractor.Core.Parser;
 namespace UnityStoryExtractor.GUI.ViewModels;
 
 /// <summary>
-/// メインウィンドウのViewModel
+/// メインウィンドウのViewModel - 抜本的に改善
 /// </summary>
 public partial class MainViewModel : ObservableObject
 {
     private readonly IAssetLoader _loader;
     private readonly IStoryExtractor _extractor;
     private CancellationTokenSource? _cancellationTokenSource;
+    private readonly Dispatcher _dispatcher;
 
-    // パーサーをキャッシュ（プレビュー用）
-    private readonly TextAssetParser _textAssetParser = new();
-    private readonly MonoBehaviourParser _monoBehaviourParser = new();
-    private readonly AssemblyParser _assemblyParser = new();
+    // タイムアウト設定
+    private const int LoadTimeoutSeconds = 30;
+    private const int ExtractTimeoutSeconds = 300; // 5分
 
     [ObservableProperty]
     private ObservableCollection<FileTreeNodeViewModel> _fileTreeNodes = new();
@@ -67,6 +68,9 @@ public partial class MainViewModel : ObservableObject
     private bool _isExtracting;
 
     [ObservableProperty]
+    private bool _isLoadingPreview;
+
+    [ObservableProperty]
     private bool _hasResults;
 
     [ObservableProperty]
@@ -90,14 +94,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private ExtractionOptions _options = new();
 
-    // === 問題1: 出力先フォルダ関連 ===
+    // 出力フォルダ（App.OutputFolderと同期）
     [ObservableProperty]
     private string _outputFolderPath = string.Empty;
 
     [ObservableProperty]
     private string _lastExportedFilePath = string.Empty;
 
-    // === 問題2: アセットプレビュー関連 ===
+    // アセットプレビュー
     [ObservableProperty]
     private string _assetPreviewContent = string.Empty;
 
@@ -105,19 +109,16 @@ public partial class MainViewModel : ObservableObject
     private string _assetPreviewTitle = "アセットを選択してください";
 
     [ObservableProperty]
-    private bool _isLoadingPreview;
-
-    [ObservableProperty]
     private ObservableCollection<AssetContentItem> _assetContents = new();
 
-    // === 問題3: ログ機能強化 ===
+    // ログ
     [ObservableProperty]
     private ObservableCollection<LogEntry> _logEntries = new();
 
     [ObservableProperty]
     private string _logText = string.Empty;
 
-    // === 問題4: メモリ監視 ===
+    // メモリ監視
     [ObservableProperty]
     private string _memoryUsage = "0 MB";
 
@@ -126,49 +127,55 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
         _loader = new UnityAssetLoader();
         _extractor = new StoryExtractor();
 
-        // 出力フォルダのデフォルトパスを設定
-        InitializeOutputFolder();
+        // 出力フォルダのパスを設定
+        OutputFolderPath = App.OutputFolder;
+        EnsureOutputFolderExists();
 
         // プロパティ変更時のフィルタリング
         PropertyChanged += OnPropertyChanged;
 
         // メモリ監視タイマー開始
         StartMemoryMonitor();
+
+        AddLog(LogLevel.Info, $"アプリケーション初期化完了");
+        AddLog(LogLevel.Info, $"出力フォルダ: {OutputFolderPath}");
     }
 
-    private void InitializeOutputFolder()
+    private void EnsureOutputFolderExists()
     {
-        // アプリケーション実行フォルダ/Output をデフォルトに
-        var appFolder = AppDomain.CurrentDomain.BaseDirectory;
-        OutputFolderPath = Path.Combine(appFolder, "Output");
-
-        // フォルダがなければ作成
-        if (!Directory.Exists(OutputFolderPath))
+        try
         {
-            Directory.CreateDirectory(OutputFolderPath);
-            AddLog(LogLevel.Info, $"出力フォルダを作成しました: {OutputFolderPath}");
+            if (!Directory.Exists(OutputFolderPath))
+            {
+                Directory.CreateDirectory(OutputFolderPath);
+                AddLog(LogLevel.Info, $"出力フォルダを作成: {OutputFolderPath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog(LogLevel.Error, $"出力フォルダ作成エラー: {ex.Message}");
         }
     }
 
     private void StartMemoryMonitor()
     {
-        _memoryMonitorTimer = new System.Timers.Timer(1000);
+        _memoryMonitorTimer = new System.Timers.Timer(2000);
         _memoryMonitorTimer.Elapsed += (s, e) =>
         {
             var memoryMB = GC.GetTotalMemory(false) / (1024.0 * 1024.0);
-            Application.Current?.Dispatcher?.Invoke(() =>
+            SafeInvoke(() =>
             {
                 MemoryUsage = $"{memoryMB:F1} MB";
 
-                // 2GB超えたらGC強制実行
-                if (memoryMB > 2000)
+                // 1.5GB超えたらGC警告
+                if (memoryMB > 1500)
                 {
-                    AddLog(LogLevel.Warning, "メモリ使用量が2GBを超えました。ガベージコレクションを実行します。");
-                    GC.Collect();
-                    GC.WaitForPendingFinalizers();
+                    AddLog(LogLevel.Warning, $"メモリ使用量が高くなっています: {memoryMB:F0} MB");
+                    GC.Collect(2, GCCollectionMode.Optimized);
                 }
             });
         };
@@ -187,7 +194,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    // === ログ機能（問題3） ===
+    // === ログ機能 ===
     public void AddLog(LogLevel level, string message, string? details = null)
     {
         var entry = new LogEntry
@@ -198,7 +205,7 @@ public partial class MainViewModel : ObservableObject
             Details = details
         };
 
-        Application.Current?.Dispatcher?.Invoke(() =>
+        SafeInvoke(() =>
         {
             LogEntries.Add(entry);
             LogText += $"[{entry.Timestamp:HH:mm:ss}] [{entry.Level}] {message}\n";
@@ -206,10 +213,16 @@ public partial class MainViewModel : ObservableObject
             {
                 LogText += $"  詳細: {details}\n";
             }
-
-            // ログをファイルにも保存
-            SaveLogToFile(entry);
         });
+
+        // ファイルにも保存
+        SaveLogToFile(entry);
+
+        // App.xaml.csにも転送（エラーログ統合）
+        if (level == LogLevel.Error)
+        {
+            App.WriteLog($"[GUI] {message}");
+        }
     }
 
     private void SaveLogToFile(LogEntry entry)
@@ -226,7 +239,19 @@ public partial class MainViewModel : ObservableObject
         }
         catch
         {
-            // ログファイル書き込みエラーは無視
+            // ログ書き込みエラーは無視
+        }
+    }
+
+    private void SafeInvoke(Action action)
+    {
+        if (_dispatcher.CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            _dispatcher.Invoke(action);
         }
     }
 
@@ -241,17 +266,26 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void OpenOutputFolder()
     {
-        if (Directory.Exists(OutputFolderPath))
+        try
         {
-            System.Diagnostics.Process.Start("explorer.exe", OutputFolderPath);
+            if (Directory.Exists(OutputFolderPath))
+            {
+                Process.Start("explorer.exe", OutputFolderPath);
+                AddLog(LogLevel.Info, $"出力フォルダを開きました: {OutputFolderPath}");
+            }
+            else
+            {
+                MessageBox.Show($"出力フォルダが存在しません:\n{OutputFolderPath}", "エラー",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            MessageBox.Show("出力フォルダが存在しません。", "エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+            AddLog(LogLevel.Error, $"フォルダを開けませんでした: {ex.Message}");
         }
     }
 
-    // === アセットプレビュー機能（問題2） ===
+    // === アセットプレビュー機能（問題2対応） ===
     private async Task LoadAssetPreviewAsync()
     {
         if (SelectedTreeNode == null || SelectedTreeNode.IsDirectory)
@@ -262,160 +296,144 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        var nodeName = SelectedTreeNode.Name;
+        var nodePath = SelectedTreeNode.FullPath;
+        var nodeType = SelectedTreeNode.NodeType;
+
         try
         {
             IsLoadingPreview = true;
-            AssetPreviewTitle = $"読み込み中: {SelectedTreeNode.Name}";
-            AssetPreviewContent = string.Empty;
+            AssetPreviewTitle = $"読み込み中: {nodeName}...";
+            AssetPreviewContent = "解析中...";
             AssetContents.Clear();
 
-            AddLog(LogLevel.Info, $"アセットプレビュー読み込み開始: {SelectedTreeNode.Name}");
+            AddLog(LogLevel.Info, $"アセットプレビュー開始: {nodeName}");
 
-            var nodeType = SelectedTreeNode.NodeType;
-            var filePath = SelectedTreeNode.FullPath;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(LoadTimeoutSeconds));
+
+            var contents = new List<AssetContentItem>();
+            var previewText = new StringBuilder();
 
             await Task.Run(async () =>
             {
-                var contents = new List<AssetContentItem>();
-                var previewText = new StringBuilder();
-
                 try
                 {
-                    switch (nodeType)
+                    var fileInfo = new FileInfo(nodePath);
+                    previewText.AppendLine($"=== ファイル情報 ===");
+                    previewText.AppendLine($"パス: {nodePath}");
+                    previewText.AppendLine($"サイズ: {FormatFileSize(fileInfo.Length)}");
+                    previewText.AppendLine($"種別: {nodeType}");
+                    previewText.AppendLine();
+
+                    // ファイルサイズが大きすぎる場合は警告
+                    if (fileInfo.Length > 500 * 1024 * 1024) // 500MB
                     {
-                        case FileNodeType.AssetsFile:
-                        case FileNodeType.ResourcesAssets:
-                        case FileNodeType.AssetBundle:
-                            var textResult = await _textAssetParser.ParseAsync(filePath, Options, CancellationToken.None);
-                            foreach (var asset in textResult.Assets)
+                        previewText.AppendLine("[警告] ファイルサイズが大きいため、プレビューは制限されます");
+                        previewText.AppendLine();
+                    }
+
+                    // 小さいファイル（100MB以下）のみ完全解析
+                    if (fileInfo.Length <= 100 * 1024 * 1024)
+                    {
+                        var parser = new TextAssetParser();
+                        var result = await parser.ParseAsync(nodePath, Options, cts.Token);
+
+                        if (result.Success && result.Assets.Count > 0)
+                        {
+                            previewText.AppendLine($"=== 抽出されたテキスト ({result.Assets.Count} 件) ===");
+                            previewText.AppendLine();
+
+                            int count = 0;
+                            foreach (var asset in result.Assets.Take(50)) // 最大50件
                             {
+                                cts.Token.ThrowIfCancellationRequested();
+
                                 contents.Add(new AssetContentItem
                                 {
                                     Name = asset.Name,
                                     TypeName = asset.TypeName,
                                     Size = asset.TextContent.Sum(t => t.Length),
-                                    Preview = string.Join("\n", asset.TextContent.Take(3))
+                                    Preview = string.Join(" ", asset.TextContent.Take(2)).Truncate(200)
                                 });
 
-                                foreach (var text in asset.TextContent.Take(10))
+                                foreach (var text in asset.TextContent.Take(5))
                                 {
-                                    previewText.AppendLine($"--- {asset.Name} ({asset.TypeName}) ---");
-                                    previewText.AppendLine(text.Length > 1000 ? text[..1000] + "..." : text);
+                                    previewText.AppendLine($"--- [{asset.Name}] ---");
+                                    previewText.AppendLine(text.Truncate(2000));
                                     previewText.AppendLine();
                                 }
-                            }
-                            break;
 
-                        case FileNodeType.Assembly:
-                            var asmResult = await _assemblyParser.ParseAsync(filePath, Options, CancellationToken.None);
-                            foreach (var asset in asmResult.Assets)
+                                count++;
+                                if (count >= 20) break;
+                            }
+
+                            if (result.Assets.Count > 50)
                             {
-                                contents.Add(new AssetContentItem
-                                {
-                                    Name = asset.Name,
-                                    TypeName = "Assembly String",
-                                    Size = asset.TextContent.Sum(t => t.Length),
-                                    Preview = string.Join("; ", asset.TextContent.Take(5))
-                                });
-
-                                previewText.AppendLine($"=== {asset.Name} ===");
-                                foreach (var text in asset.TextContent.Take(50))
-                                {
-                                    previewText.AppendLine($"  • {text}");
-                                }
+                                previewText.AppendLine($"... 他 {result.Assets.Count - 50} 件のテキストがあります");
                             }
-                            break;
-
-                        default:
-                            // バイナリファイルとして読み込み
-                            if (File.Exists(filePath))
+                        }
+                        else if (result.Errors.Count > 0)
+                        {
+                            previewText.AppendLine("[エラー] 解析に失敗しました:");
+                            foreach (var error in result.Errors)
                             {
-                                var bytes = await File.ReadAllBytesAsync(filePath);
-                                var textContent = TryDecodeText(bytes);
-                                if (!string.IsNullOrWhiteSpace(textContent))
-                                {
-                                    previewText.AppendLine(textContent.Length > 5000 ? textContent[..5000] + "..." : textContent);
-                                    contents.Add(new AssetContentItem
-                                    {
-                                        Name = Path.GetFileName(filePath),
-                                        TypeName = "Binary/Text",
-                                        Size = bytes.Length,
-                                        Preview = textContent.Length > 100 ? textContent[..100] + "..." : textContent
-                                    });
-                                }
-                                else
-                                {
-                                    previewText.AppendLine($"[バイナリデータ: {bytes.Length:N0} bytes]");
-                                    previewText.AppendLine(BitConverter.ToString(bytes.Take(256).ToArray()).Replace("-", " "));
-                                }
+                                previewText.AppendLine($"  - {error}");
                             }
-                            break;
+                        }
+                        else
+                        {
+                            previewText.AppendLine("[情報] テキストデータが見つかりませんでした");
+                        }
                     }
+                    else
+                    {
+                        // 大きなファイルはヘッダー情報のみ
+                        previewText.AppendLine("[情報] ファイルが大きいため、抽出処理で解析してください");
+
+                        using var stream = File.OpenRead(nodePath);
+                        var header = new byte[Math.Min(1024, fileInfo.Length)];
+                        await stream.ReadAsync(header, cts.Token);
+
+                        previewText.AppendLine();
+                        previewText.AppendLine("=== ヘッダー (HEX) ===");
+                        previewText.AppendLine(BitConverter.ToString(header.Take(256).ToArray()).Replace("-", " "));
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    previewText.Clear();
+                    previewText.AppendLine("[タイムアウト] プレビューの読み込みがタイムアウトしました");
+                    previewText.AppendLine("抽出処理で解析してください");
                 }
                 catch (Exception ex)
                 {
-                    previewText.AppendLine($"[エラー] アセット解析に失敗: {ex.Message}");
+                    previewText.Clear();
+                    previewText.AppendLine($"[エラー] {ex.GetType().Name}: {ex.Message}");
                 }
+            }, cts.Token);
 
-                Application.Current?.Dispatcher?.Invoke(() =>
+            SafeInvoke(() =>
+            {
+                AssetPreviewTitle = $"{nodeName} ({contents.Count} アイテム)";
+                AssetPreviewContent = previewText.ToString();
+                foreach (var item in contents)
                 {
-                    AssetPreviewTitle = $"{SelectedTreeNode?.Name} ({contents.Count} アイテム)";
-                    AssetPreviewContent = previewText.ToString();
-                    foreach (var item in contents)
-                    {
-                        AssetContents.Add(item);
-                    }
-                });
+                    AssetContents.Add(item);
+                }
             });
 
-            AddLog(LogLevel.Info, $"アセットプレビュー読み込み完了: {AssetContents.Count} アイテム");
+            AddLog(LogLevel.Info, $"プレビュー完了: {nodeName} - {contents.Count} アイテム");
         }
         catch (Exception ex)
         {
+            AddLog(LogLevel.Error, $"プレビューエラー: {ex.Message}");
             AssetPreviewTitle = "エラー";
             AssetPreviewContent = $"プレビューの読み込みに失敗しました:\n{ex.Message}";
-            AddLog(LogLevel.Error, $"プレビュー読み込みエラー: {ex.Message}");
         }
         finally
         {
             IsLoadingPreview = false;
         }
-    }
-
-    private static string TryDecodeText(byte[] bytes)
-    {
-        // BOMチェック
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
-        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
-            return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
-        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
-            return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
-
-        // UTF-8として試行
-        try
-        {
-            var text = Encoding.UTF8.GetString(bytes);
-            // テキストとして妥当かチェック
-            var printableRatio = text.Count(c => !char.IsControl(c) || c == '\n' || c == '\r' || c == '\t') / (double)text.Length;
-            if (printableRatio > 0.8)
-                return text;
-        }
-        catch { }
-
-        // Shift-JIS試行
-        try
-        {
-            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            var sjis = Encoding.GetEncoding("shift_jis");
-            var text = sjis.GetString(bytes);
-            var printableRatio = text.Count(c => !char.IsControl(c) || c == '\n' || c == '\r' || c == '\t') / (double)text.Length;
-            if (printableRatio > 0.8)
-                return text;
-        }
-        catch { }
-
-        return string.Empty;
     }
 
     [RelayCommand]
@@ -447,24 +465,33 @@ public partial class MainViewModel : ObservableObject
             _currentPath = path;
             StatusText = $"読み込み中: {path}";
             IsExtracting = true;
+            CanExtract = false;
             FileTreeNodes.Clear();
-            AddLog(LogLevel.Info, $"フォルダを読み込み開始: {path}");
+            AddLog(LogLevel.Info, $"フォルダスキャン開始: {path}");
+
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource = new CancellationTokenSource();
 
             var progress = new Progress<ScanProgress>(p =>
             {
                 Progress = p.Percentage;
-                ProgressText = $"{p.ProcessedFiles}/{p.TotalFiles} ファイル";
+                ProgressText = $"スキャン中: {p.ProcessedFiles}/{p.TotalFiles}";
+                if (p.ProcessedFiles % 50 == 0)
+                {
+                    StatusText = $"スキャン中: {Path.GetFileName(p.CurrentFile)}";
+                }
             });
 
-            _cancellationTokenSource = new CancellationTokenSource();
-
             // Unityバージョン検出
+            AddLog(LogLevel.Info, "Unityバージョンを検出中...");
             var version = await _loader.DetectUnityVersionAsync(path, _cancellationTokenSource.Token);
             UnityVersion = version ?? "不明";
-            AddLog(LogLevel.Info, $"Unityバージョン検出: {UnityVersion}");
+            AddLog(LogLevel.Info, $"Unityバージョン: {UnityVersion}");
 
             // ディレクトリスキャン
+            var stopwatch = Stopwatch.StartNew();
             var rootNode = await _loader.ScanDirectoryAsync(path, progress, _cancellationTokenSource.Token);
+            stopwatch.Stop();
 
             // ViewModelに変換
             var viewModel = CreateTreeViewModel(rootNode, null);
@@ -474,18 +501,19 @@ public partial class MainViewModel : ObservableObject
             HasNoFiles = false;
             CanExtract = true;
             var nodeCount = CountNodes(viewModel);
-            StatusText = $"読み込み完了: {nodeCount} アイテム";
-            AddLog(LogLevel.Info, $"スキャン完了: {nodeCount} アイテム発見");
+            StatusText = $"読み込み完了: {nodeCount} アイテム ({stopwatch.ElapsedMilliseconds}ms)";
+            AddLog(LogLevel.Info, $"スキャン完了: {nodeCount} アイテム, {stopwatch.ElapsedMilliseconds}ms");
         }
         catch (OperationCanceledException)
         {
             StatusText = "読み込みがキャンセルされました";
-            AddLog(LogLevel.Warning, "読み込みがキャンセルされました");
+            AddLog(LogLevel.Warning, "スキャンがキャンセルされました");
         }
         catch (Exception ex)
         {
             StatusText = $"エラー: {ex.Message}";
-            AddLog(LogLevel.Error, $"フォルダ読み込みエラー: {ex.Message}", ex.StackTrace);
+            AddLog(LogLevel.Error, $"スキャンエラー: {ex.Message}", ex.StackTrace);
+            App.WriteErrorLog("LoadPathAsync", ex);
             MessageBox.Show($"フォルダの読み込みに失敗しました:\n{ex.Message}", "エラー",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
@@ -509,11 +537,15 @@ public partial class MainViewModel : ObservableObject
         return vm;
     }
 
+    // === 抽出処理（問題3対応：抜本的改善） ===
     [RelayCommand]
     private async Task ExtractAsync()
     {
         if (string.IsNullOrEmpty(_currentPath) || FileTreeNodes.Count == 0)
+        {
+            MessageBox.Show("フォルダを選択してください", "警告", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
+        }
 
         try
         {
@@ -521,9 +553,22 @@ public partial class MainViewModel : ObservableObject
             CanExtract = false;
             ExtractedResults.Clear();
             FilteredResults.Clear();
-            AddLog(LogLevel.Info, "抽出処理を開始しました");
 
+            AddLog(LogLevel.Info, "========================================");
+            AddLog(LogLevel.Info, $"抽出処理を開始: {_currentPath}");
+            AddLog(LogLevel.Info, $"並列処理: {(Options.UseParallelProcessing ? $"有効 (並列度:{Options.MaxDegreeOfParallelism})" : "無効")}");
+
+            _cancellationTokenSource?.Cancel();
             _cancellationTokenSource = new CancellationTokenSource();
+
+            // タイムアウト設定
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(ExtractTimeoutSeconds));
+
+            var stopwatch = Stopwatch.StartNew();
+            int totalProcessed = 0;
+            int totalErrors = 0;
+            int totalExtracted = 0;
 
             var progress = new Progress<ExtractionProgress>(p =>
             {
@@ -531,10 +576,19 @@ public partial class MainViewModel : ObservableObject
                 ProgressText = $"{p.ProcessedFiles}/{p.TotalFiles} - {p.CurrentOperation}";
                 StatusText = $"抽出中: {Path.GetFileName(p.CurrentFile)}";
 
-                // 定期的にログ出力
-                if (p.ProcessedFiles % 10 == 0)
+                // 定期ログ
+                if (p.ProcessedFiles > 0 && p.ProcessedFiles % 20 == 0)
                 {
-                    AddLog(LogLevel.Info, $"処理中... {p.ProcessedFiles}/{p.TotalFiles} ファイル完了");
+                    AddLog(LogLevel.Info, $"進捗: {p.ProcessedFiles}/{p.TotalFiles} ({p.Percentage:F0}%)");
+                }
+
+                // メモリチェック
+                var memoryMB = GC.GetTotalMemory(false) / (1024.0 * 1024.0);
+                if (memoryMB > 2000)
+                {
+                    AddLog(LogLevel.Warning, "メモリ使用量が高いためGCを実行");
+                    GC.Collect(2, GCCollectionMode.Forced);
+                    GC.WaitForPendingFinalizers();
                 }
             });
 
@@ -542,7 +596,9 @@ public partial class MainViewModel : ObservableObject
                 _currentPath,
                 Options,
                 progress,
-                _cancellationTokenSource.Token);
+                linkedCts.Token);
+
+            stopwatch.Stop();
 
             // 結果を表示
             foreach (var text in result.ExtractedTexts)
@@ -552,41 +608,84 @@ public partial class MainViewModel : ObservableObject
 
             Statistics = result.Statistics;
             HasResults = result.ExtractedTexts.Count > 0;
+            totalExtracted = result.TotalExtracted;
+            totalProcessed = result.ProcessedFiles;
+            totalErrors = result.Errors.Count;
 
             ApplyFilter();
 
-            // ログ更新
-            AddLog(LogLevel.Info, $"抽出完了: {result.TotalExtracted} アイテム抽出");
-            AddLog(LogLevel.Info, $"処理ファイル数: {result.ProcessedFiles}, 処理時間: {result.DurationMs}ms");
+            // ログ出力
+            AddLog(LogLevel.Info, "========================================");
+            AddLog(LogLevel.Info, $"抽出完了!");
+            AddLog(LogLevel.Info, $"  処理ファイル数: {totalProcessed}");
+            AddLog(LogLevel.Info, $"  抽出アイテム数: {totalExtracted}");
+            AddLog(LogLevel.Info, $"  エラー数: {totalErrors}");
+            AddLog(LogLevel.Info, $"  処理時間: {stopwatch.Elapsed.TotalSeconds:F1} 秒");
+            AddLog(LogLevel.Info, $"  成功率: {(totalProcessed > 0 ? (totalProcessed - totalErrors) * 100.0 / totalProcessed : 0):F1}%");
 
-            foreach (var error in result.Errors)
+            if (result.Errors.Count > 0)
             {
-                AddLog(LogLevel.Error, $"抽出エラー: {error.File}", error.Message);
+                AddLog(LogLevel.Warning, $"エラーがありました ({result.Errors.Count} 件):");
+                foreach (var error in result.Errors.Take(10))
+                {
+                    AddLog(LogLevel.Error, $"  - {Path.GetFileName(error.File)}: {error.Message}");
+                }
+                if (result.Errors.Count > 10)
+                {
+                    AddLog(LogLevel.Warning, $"  ... 他 {result.Errors.Count - 10} 件のエラー");
+                }
             }
 
-            foreach (var warning in result.Warnings)
-            {
-                AddLog(LogLevel.Warning, warning);
-            }
+            StatusText = $"抽出完了: {totalExtracted} アイテム ({stopwatch.Elapsed.TotalSeconds:F1}秒)";
 
-            StatusText = $"抽出完了: {result.TotalExtracted} アイテム";
-
-            // 自動保存オプション: Outputフォルダに自動保存
+            // 結果がある場合は自動保存
             if (HasResults)
             {
                 await AutoSaveResultsAsync(result);
             }
+            else
+            {
+                AddLog(LogLevel.Warning, "抽出可能なテキストが見つかりませんでした");
+                MessageBox.Show(
+                    "抽出可能なテキストが見つかりませんでした。\n\n" +
+                    "考えられる原因:\n" +
+                    "- ゲームデータが暗号化されている\n" +
+                    "- サポートされていない形式のファイル\n" +
+                    "- テキストデータが含まれていない\n\n" +
+                    "詳細はログタブを確認してください。",
+                    "結果なし",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
         }
         catch (OperationCanceledException)
         {
-            StatusText = "抽出がキャンセルされました";
-            AddLog(LogLevel.Warning, "抽出がキャンセルされました");
+            StatusText = "抽出がキャンセル/タイムアウトしました";
+            AddLog(LogLevel.Warning, "抽出処理がキャンセルまたはタイムアウトしました");
+        }
+        catch (OutOfMemoryException ex)
+        {
+            StatusText = "メモリ不足エラー";
+            AddLog(LogLevel.Error, $"メモリ不足: {ex.Message}");
+            App.WriteErrorLog("ExtractAsync - OOM", ex);
+
+            GC.Collect(2, GCCollectionMode.Forced);
+            GC.WaitForPendingFinalizers();
+
+            MessageBox.Show(
+                "メモリ不足が発生しました。\n\n対処法:\n" +
+                "- 設定で並列度を下げる\n" +
+                "- 他のアプリケーションを閉じる\n" +
+                "- より大きなメモリのPCで実行",
+                "メモリ不足",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
         catch (Exception ex)
         {
             StatusText = $"エラー: {ex.Message}";
-            AddLog(LogLevel.Error, $"抽出エラー: {ex.Message}", ex.StackTrace);
-            MessageBox.Show($"抽出に失敗しました:\n{ex.Message}", "エラー",
+            AddLog(LogLevel.Error, $"抽出エラー: {ex.GetType().Name} - {ex.Message}", ex.StackTrace);
+            App.WriteErrorLog("ExtractAsync", ex);
+            MessageBox.Show($"抽出に失敗しました:\n{ex.Message}\n\n詳細はログを確認してください。", "エラー",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -597,40 +696,17 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    // === 問題1: 自動保存機能 ===
     private async Task AutoSaveResultsAsync(ExtractionResult result)
     {
         try
         {
-            // Outputフォルダ確認・作成
-            if (!Directory.Exists(OutputFolderPath))
-            {
-                Directory.CreateDirectory(OutputFolderPath);
-            }
+            EnsureOutputFolderExists();
 
-            // ファイル名生成（入力フォルダ名＋タイムスタンプ）
             var folderName = Path.GetFileName(_currentPath) ?? "extracted";
             var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             var fileName = $"story_from_{SanitizeFileName(folderName)}_{timestamp}.json";
             var outputPath = Path.Combine(OutputFolderPath, fileName);
 
-            // 同名ファイルが存在する場合の確認
-            if (File.Exists(outputPath))
-            {
-                var msgResult = MessageBox.Show(
-                    $"ファイルが既に存在します:\n{outputPath}\n\n上書きしますか？",
-                    "上書き確認",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (msgResult != MessageBoxResult.Yes)
-                {
-                    AddLog(LogLevel.Info, "自動保存がキャンセルされました");
-                    return;
-                }
-            }
-
-            // JSON形式で保存
             var writer = OutputWriterFactory.Create(OutputFormat.Json);
             await writer.WriteAsync(result, outputPath);
 
@@ -638,10 +714,11 @@ public partial class MainViewModel : ObservableObject
             AddLog(LogLevel.Info, $"自動保存完了: {outputPath}");
             StatusText = $"保存完了: {fileName}";
 
-            // ユーザーに通知
             MessageBox.Show(
-                $"抽出結果を自動保存しました:\n{outputPath}\n\n抽出アイテム数: {result.TotalExtracted}",
-                "自動保存完了",
+                $"抽出結果を保存しました:\n{outputPath}\n\n" +
+                $"抽出アイテム数: {result.TotalExtracted}\n" +
+                $"処理ファイル数: {result.ProcessedFiles}",
+                "保存完了",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -662,11 +739,25 @@ public partial class MainViewModel : ObservableObject
         return sanitized.ToString();
     }
 
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
     [RelayCommand]
     private void Cancel()
     {
         _cancellationTokenSource?.Cancel();
         AddLog(LogLevel.Warning, "キャンセルが要求されました");
+        StatusText = "キャンセル中...";
     }
 
     [RelayCommand]
@@ -677,7 +768,7 @@ public partial class MainViewModel : ObservableObject
         var dialog = new SaveFileDialog
         {
             Title = "抽出結果を保存",
-            Filter = "JSON ファイル (*.json)|*.json|テキスト ファイル (*.txt)|*.txt|CSV ファイル (*.csv)|*.csv|XML ファイル (*.xml)|*.xml",
+            Filter = "JSON (*.json)|*.json|テキスト (*.txt)|*.txt|CSV (*.csv)|*.csv|XML (*.xml)|*.xml",
             DefaultExt = ".json",
             FileName = $"extracted_{DateTime.Now:yyyyMMdd_HHmmss}",
             InitialDirectory = OutputFolderPath
@@ -712,9 +803,9 @@ public partial class MainViewModel : ObservableObject
 
                 LastExportedFilePath = dialog.FileName;
                 StatusText = $"保存完了: {dialog.FileName}";
-                AddLog(LogLevel.Info, $"ファイル保存完了: {dialog.FileName}");
+                AddLog(LogLevel.Info, $"ファイル保存: {dialog.FileName}");
 
-                MessageBox.Show($"ファイルを保存しました:\n{dialog.FileName}", "保存完了",
+                MessageBox.Show($"保存しました:\n{dialog.FileName}", "保存完了",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
@@ -729,7 +820,6 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void Settings()
     {
-        // 設定ダイアログを表示
         var settingsWindow = new SettingsWindow(Options, OutputFolderPath);
         if (settingsWindow.ShowDialog() == true)
         {
@@ -748,7 +838,6 @@ public partial class MainViewModel : ObservableObject
 
         var filtered = ExtractedResults.AsEnumerable();
 
-        // テキストフィルタ
         if (!string.IsNullOrWhiteSpace(FilterText))
         {
             var filter = FilterText.ToLowerInvariant();
@@ -757,13 +846,12 @@ public partial class MainViewModel : ObservableObject
                 r.AssetName.Contains(filter, StringComparison.OrdinalIgnoreCase));
         }
 
-        // ソースフィルタ
         if (SelectedFilterSource != "すべて")
         {
             filtered = filtered.Where(r => r.Source.ToString() == SelectedFilterSource);
         }
 
-        foreach (var item in filtered)
+        foreach (var item in filtered.Take(1000)) // 表示上限
         {
             FilteredResults.Add(item);
         }
@@ -775,26 +863,16 @@ public partial class MainViewModel : ObservableObject
     }
 }
 
-/// <summary>
-/// ログレベル
-/// </summary>
-public enum LogLevel
-{
-    Info,
-    Warning,
-    Error
-}
+// === 補助クラス ===
 
-/// <summary>
-/// ログエントリ
-/// </summary>
+public enum LogLevel { Info, Warning, Error }
+
 public class LogEntry
 {
     public DateTime Timestamp { get; set; }
     public LogLevel Level { get; set; }
     public string Message { get; set; } = string.Empty;
     public string? Details { get; set; }
-
     public string LevelIcon => Level switch
     {
         LogLevel.Info => "ℹ️",
@@ -802,13 +880,9 @@ public class LogEntry
         LogLevel.Error => "❌",
         _ => "•"
     };
-
     public string FormattedTime => Timestamp.ToString("HH:mm:ss");
 }
 
-/// <summary>
-/// アセット内容アイテム
-/// </summary>
 public class AssetContentItem
 {
     public string Name { get; set; } = string.Empty;
@@ -817,13 +891,9 @@ public class AssetContentItem
     public string Preview { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// ファイルツリーノードのViewModel
-/// </summary>
 public class FileTreeNodeViewModel : INotifyPropertyChanged
 {
     private readonly FileTreeNode _model;
-    private readonly FileTreeNodeViewModel? _parent;
     private bool _isExpanded;
     private bool _isSelected;
     private ObservableCollection<FileTreeNodeViewModel>? _children;
@@ -831,7 +901,6 @@ public class FileTreeNodeViewModel : INotifyPropertyChanged
     public FileTreeNodeViewModel(FileTreeNode model, FileTreeNodeViewModel? parent = null)
     {
         _model = model;
-        _parent = parent;
     }
 
     public string Name => _model.Name;
@@ -856,46 +925,38 @@ public class FileTreeNodeViewModel : INotifyPropertyChanged
     public bool IsExpanded
     {
         get => _isExpanded;
-        set
-        {
-            if (_isExpanded != value)
-            {
-                _isExpanded = value;
-                OnPropertyChanged();
-            }
-        }
+        set { if (_isExpanded != value) { _isExpanded = value; OnPropertyChanged(); } }
     }
 
     public bool IsSelected
     {
         get => _isSelected;
-        set
-        {
-            if (_isSelected != value)
-            {
-                _isSelected = value;
-                OnPropertyChanged();
-            }
-        }
+        set { if (_isSelected != value) { _isSelected = value; OnPropertyChanged(); } }
     }
 
     public ObservableCollection<FileTreeNodeViewModel> Children
     {
         get
         {
-            if (_children == null)
-            {
-                _children = new ObservableCollection<FileTreeNodeViewModel>(
-                    _model.Children.Select(c => new FileTreeNodeViewModel(c, this)));
-            }
+            _children ??= new ObservableCollection<FileTreeNodeViewModel>(
+                _model.Children.Select(c => new FileTreeNodeViewModel(c, this)));
             return _children;
         }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
-
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+
+// 文字列拡張メソッド
+public static class StringExtensions
+{
+    public static string Truncate(this string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Length <= maxLength ? value : value[..maxLength] + "...";
     }
 }
