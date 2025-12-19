@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using UnityStoryExtractor.GUI.ViewModels;
 
 namespace UnityStoryExtractor.GUI.Views;
@@ -10,10 +11,30 @@ public partial class MainWindow : Window
 {
     public MainWindow()
     {
-        InitializeComponent();
+        try
+        {
+            InitializeComponent();
 
-        // 著作権警告を表示
-        ShowCopyrightWarning();
+            // 著作権警告を表示
+            Loaded += (s, e) => ShowCopyrightWarning();
+
+            // ツリービュー選択イベント
+            FileTreeView.SelectedItemChanged += FileTreeView_SelectedItemChanged;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"初期化エラー:\n{ex.Message}\n\n{ex.StackTrace}", 
+                "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+            throw;
+        }
+    }
+
+    private void FileTreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (e.NewValue is FileTreeNodeViewModel selectedNode && DataContext is MainViewModel vm)
+        {
+            vm.SelectedTreeNode = selectedNode;
+        }
     }
 
     private void ShowCopyrightWarning()
@@ -40,13 +61,21 @@ public partial class MainWindow : Window
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        try
         {
-            var paths = (string[])e.Data.GetData(DataFormats.FileDrop)!;
-            if (paths.Length > 0 && DataContext is MainViewModel vm)
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
-                vm.LoadPath(paths[0]);
+                var paths = (string[])e.Data.GetData(DataFormats.FileDrop)!;
+                if (paths.Length > 0 && DataContext is MainViewModel vm)
+                {
+                    vm.LoadPath(paths[0]);
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"ドロップエラー:\n{ex.Message}", "エラー", 
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

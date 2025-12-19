@@ -1,0 +1,90 @@
+<Window x:Class="UnityStoryExtractor.GUI.ViewModels.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="設定" 
+        Height="500" Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        FontFamily="Yu Gothic UI, Meiryo, Segoe UI"
+        Background="#FAFAFA">
+    
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- 出力設定 -->
+                <TextBlock Text="出力設定" FontWeight="Bold" FontSize="14" Margin="0,0,0,8"/>
+                <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="出力フォルダ:" Margin="0,0,0,4"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="OutputFolderTextBox" Padding="8" IsReadOnly="True" BorderBrush="#E0E0E0"/>
+                            <Button Grid.Column="1" Content="📁 参照" Padding="12,8" Margin="8,0,0,0" Click="BrowseOutputFolder_Click"/>
+                        </Grid>
+                        <Button Content="📂 出力フォルダを開く" Padding="8" Margin="0,8,0,0" Click="OpenOutputFolder_Click" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Border>
+                
+                <!-- 抽出設定 -->
+                <TextBlock Text="抽出設定" FontWeight="Bold" FontSize="14" Margin="0,0,0,8"/>
+                <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                    <StackPanel>
+                        <CheckBox x:Name="ExtractTextAssetCheckBox" Content="TextAsset を抽出" IsChecked="True" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="ExtractMonoBehaviourCheckBox" Content="MonoBehaviour を抽出" IsChecked="True" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="ExtractAssemblyCheckBox" Content="アセンブリ文字列を抽出" IsChecked="True" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="ProcessResSCheckBox" Content=".resS ファイルを処理" IsChecked="True" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="AttemptDecryptionCheckBox" Content="暗号化データの復号を試行" IsChecked="True" Margin="0,0,0,8"/>
+                        
+                        <Separator Margin="0,8"/>
+                        
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="80"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="最小文字数:" VerticalAlignment="Center"/>
+                            <TextBox x:Name="MinLengthTextBox" Grid.Column="1" Text="3" Padding="8" Margin="8,0" BorderBrush="#E0E0E0"/>
+                            <TextBlock Grid.Column="2" Text="最大文字数:" VerticalAlignment="Center"/>
+                            <TextBox x:Name="MaxLengthTextBox" Grid.Column="3" Text="100000" Padding="8" Margin="8,0,0,0" BorderBrush="#E0E0E0"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                
+                <!-- 処理設定 -->
+                <TextBlock Text="処理設定" FontWeight="Bold" FontSize="14" Margin="0,0,0,8"/>
+                <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="12">
+                    <StackPanel>
+                        <CheckBox x:Name="UseParallelCheckBox" Content="並列処理を使用（高速化）" IsChecked="True" Margin="0,0,0,8"/>
+                        
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="並列度（スレッド数）:" VerticalAlignment="Center"/>
+                            <TextBox x:Name="ParallelismTextBox" Grid.Column="1" Text="4" Padding="8" Margin="8,0,0,0" BorderBrush="#E0E0E0"/>
+                        </Grid>
+                        
+                        <TextBlock Text="※ 値が大きいほど高速ですがメモリ使用量が増加します" Foreground="Gray" FontSize="11" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+        
+        <!-- ボタン -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="キャンセル" Padding="24,8" Click="Cancel_Click"/>
+            <Button Content="OK" Padding="24,8" Margin="8,0,0,0" Background="#673AB7" Foreground="White" Click="OK_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
